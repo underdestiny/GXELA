@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      3.6
 // @description  GXELA 自动学习、班级必修同步、完成确认、队列恢复与日志筛选
-// @author       GXELA
+// @author       underdestiny
 // @match        https://www.gxela.gov.cn/*
 // @grant        GM_setValue
 // @grant        GM_getValue
