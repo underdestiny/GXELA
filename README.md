@@ -51,7 +51,8 @@ https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn.user.js
 
 确认后点击安装即可。
 
-
+其他安装地址：
+https://greasyfork.org/zh-CN/scripts/593288-gxela-%E8%87%AA%E5%8A%A8%E9%80%89%E8%AF%BE-%E8%87%AA%E5%8A%A8%E5%AD%A6%E4%B9%A0-v3-6
 
 
 # 🚀 使用方法
