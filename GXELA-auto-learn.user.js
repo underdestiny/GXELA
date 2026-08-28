@@ -12,7 +12,7 @@
 // @grant        GM_addStyle
 // @downloadURL  https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn.user.js
-
+// @license      仅供个人学习使用，禁止未经许可的商业化分发
 
 // ==/UserScript==
 
