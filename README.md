@@ -53,7 +53,7 @@ https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn.user.js
 
 其他安装地址：
 
-https://greasyfork.org/zh-CN/scripts/593288-gxela-自动选课-自动学习-v3-6
+https://greasyfork.org/zh-CN/scripts/593291-gxela-自动选课-自动学习
 
 
 # 🚀 使用方法
