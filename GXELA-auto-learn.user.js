@@ -2,7 +2,7 @@
 // @name         GXELA 自动选课 + 自动学习（V3.6）
 // @namespace    http://tampermonkey.net/
 // @version      3.6
-// @description  GXELA 自动学习、班级必修同步、完成确认、队列恢复与日志筛选
+// @description  GXELA 自动学习助手 广西|干部|网络|学院|自动学习助手
 // @author       underdestiny
 // @match        https://www.gxela.gov.cn/*
 // @grant        GM_setValue
