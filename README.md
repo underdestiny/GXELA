@@ -1,2 +1,2 @@
 # GXELA
-A script to play videos automatically
+A Tampermonkey script to play videos automatically
