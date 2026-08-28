@@ -10,8 +10,9 @@
 // @grant        GM_deleteValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
-// @downloadURL  https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA%20%E8%87%AA%E5%8A%A8%E9%80%89%E8%AF%BE%20+%20%E8%87%AA%E5%8A%A8%E5%AD%A6%E4%B9%A0%EF%BC%88v3.6%EF%BC%89.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA%20%E8%87%AA%E5%8A%A8%E9%80%89%E8%AF%BE%20+%20%E8%87%AA%E5%8A%A8%E5%AD%A6%E4%B9%A0%EF%BC%88v3.6%EF%BC%89.user.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn-v3.6.user.js
+// @updateURL    https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn-v3.6.user.js
+
 
 // ==/UserScript==
 
