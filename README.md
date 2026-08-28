@@ -153,7 +153,9 @@ https://www.tampermonkey.net/
 ---
 
 ## 2. 安装脚本
+## 🌐 CDN 分发
 
+本项目使用 jsDelivr CDN 进行脚本分发，以提升国内用户访问速度和稳定性。
 
 在浏览器打开安装地址：
 
@@ -162,6 +164,7 @@ https://cdn.jsdelivr.net/gh/underdestiny/GXELA@main/GXELA-auto-learn.user.js
 浏览器会自动进入 Tampermonkey 安装页面。
 
 确认后点击安装即可。
+
 
 
 
@@ -281,5 +284,6 @@ clientid 设置
 
 # 📄 License
 
-本项目仅用于个人学习辅助。
-请合理使用，并遵守相关平台规定。
+MIT License
+
+Copyright (c) 2026 underdestiny
