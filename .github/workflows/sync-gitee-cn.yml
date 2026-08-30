@@ -15,67 +15,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # ============================================================
-      # 1. 获取 GitHub main 最新源码
-      # ============================================================
-      - name: Checkout GitHub
+      # 获取 GitHub 源码
+      - name: Checkout
         uses: actions/checkout@v4
 
-
-      # ============================================================
-      # 2. 检查源码文件
-      # ============================================================
-      - name: Check userscript
-        run: |
-          set -e
-
-          FILE="GXELA-auto-learn.user.js"
-
-          if [ ! -f "$FILE" ]; then
-            echo "错误：找不到 $FILE"
-            exit 1
-          fi
-
-          echo "找到 $FILE"
-          wc -c "$FILE"
-
-
-      # ============================================================
-      # 3. 生成 Gitee 国内版
-      #
-      # GitHub：
-      #   GXELA-auto-learn.user.js
-      #
-      # Gitee：
-      #   core.user.js
-      #
-      # 同时修改：
-      #   @updateURL
-      #   @downloadURL
-      # ============================================================
+      # 生成国内版
       - name: Generate CN version
+        env:
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
         run: |
           set -e
 
           python3 <<'PY'
           from pathlib import Path
           import re
+          import os
+          from urllib.parse import urlparse
 
           source = Path("GXELA-auto-learn.user.js")
           target = Path("core.user.js")
 
+          repo = os.environ["GITEE_REPO"].rstrip("/")
+
+          # 从仓库地址自动生成 Raw 地址
+          parsed = urlparse(repo)
+
+          if parsed.netloc != "gitee.com":
+              raise SystemExit("错误：GITEE_REPO 必须是 Gitee 仓库地址")
+
+          path = parsed.path.strip("/")
+
+          if path.endswith(".git"):
+              path = path[:-4]
+
+          cn_url = f"https://gitee.com/{path}/raw/master/core.user.js"
+
           text = source.read_text(encoding="utf-8")
 
-          # Gitee 国内版 Raw 地址
-          cn_url = (
-              "https://gitee.com/underdestiny/core/"
-              "raw/master/core.user.js"
-          )
-
-          # --------------------------------------------------------
           # 替换 @updateURL
-          # --------------------------------------------------------
           text, n1 = re.subn(
               r'^(\s*//\s*@updateURL\s+).*$',
               rf'\g<1>{cn_url}',
@@ -84,9 +61,7 @@ jobs:
               flags=re.MULTILINE
           )
 
-          # --------------------------------------------------------
           # 替换 @downloadURL
-          # --------------------------------------------------------
           text, n2 = re.subn(
               r'^(\s*//\s*@downloadURL\s+).*$',
               rf'\g<1>{cn_url}',
@@ -95,112 +70,45 @@ jobs:
               flags=re.MULTILINE
           )
 
-          # --------------------------------------------------------
-          # 检查替换结果
-          # --------------------------------------------------------
           if n1 != 1:
-              raise SystemExit(
-                  "错误：没有找到唯一的 @updateURL"
-              )
+              raise SystemExit("错误：没有找到 @updateURL")
 
           if n2 != 1:
-              raise SystemExit(
-                  "错误：没有找到唯一的 @downloadURL"
-              )
+              raise SystemExit("错误：没有找到 @downloadURL")
 
-          # --------------------------------------------------------
-          # 输出 Gitee 版本
-          # --------------------------------------------------------
-          target.write_text(
-              text,
-              encoding="utf-8"
-          )
+          target.write_text(text, encoding="utf-8")
 
-          print("")
-          print("========================================")
-          print("Gitee CN 版本生成成功")
-          print("========================================")
-          print(f"源文件：{source}")
-          print(f"目标文件：{target}")
-          print(f"更新地址：{cn_url}")
-          print("========================================")
+          print("CN 版本生成成功")
           PY
 
-
-      # ============================================================
-      # 4. 检查 Gitee 版本的元数据
-      # ============================================================
-      - name: Verify CN version
-        run: |
-          set -e
-
-          echo "检查 @updateURL："
-          grep -E '^[[:space:]]*//[[:space:]]*@updateURL' core.user.js
-
-          echo ""
-          echo "检查 @downloadURL："
-          grep -E '^[[:space:]]*//[[:space:]]*@downloadURL' core.user.js
-
-          echo ""
-          echo "检查 Gitee 地址："
-
-          grep -q \
-            "https://gitee.com/underdestiny/core/raw/master/core.user.js" \
-            core.user.js
-
-          echo "Gitee URL 检查通过"
-
-
-      # ============================================================
-      # 5. Clone Gitee 国内发行仓库
-      # ============================================================
-      - name: Clone Gitee repository
+      # Clone Gitee
+      - name: Clone Gitee
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
         run: |
           set -e
+
+          # 把 Token 临时注入 Clone 地址
+          AUTH_URL="${GITEE_REPO/https:\/\//https:\/\/oauth2:${GITEE_TOKEN}@}"
 
           git clone \
             --branch master \
             --single-branch \
-            "https://oauth2:${GITEE_TOKEN}@gitee.com/underdestiny/core.git" \
-            gitee-core
+            "$AUTH_URL" \
+            gitee-release
 
-
-      # ============================================================
-      # 6. 更新 Gitee core.user.js
-      # ============================================================
-      - name: Update Gitee file
+      # 更新文件
+      - name: Update Gitee
         run: |
           set -e
 
-          cp \
-            core.user.js \
-            gitee-core/core.user.js
+          cp core.user.js \
+             gitee-release/core.user.js
 
-          echo "Gitee 文件已更新："
-          ls -lh gitee-core/core.user.js
-
-
-      # ============================================================
-      # 7. 删除 Gitee 中可能存在的旧文件
-      # ============================================================
-      - name: Remove old files
-        working-directory: gitee-core
-        run: |
-          set -e
-
-          # 如果以前有其他明显的 GXELA 文件名，可以在这里删除
-          if [ -f "GXELA-auto-learn.user.js" ]; then
-            git rm GXELA-auto-learn.user.js
-          fi
-
-
-      # ============================================================
-      # 8. 提交
-      # ============================================================
-      - name: Commit changes
-        working-directory: gitee-core
+      # 提交并推送
+      - name: Push Gitee
+        working-directory: gitee-release
         run: |
           set -e
 
@@ -209,30 +117,10 @@ jobs:
 
           git add core.user.js
 
-          # 没有变化则不提交
           if git diff --cached --quiet; then
-            echo "Gitee 没有变化，无需提交"
+            echo "没有变化，无需同步"
             exit 0
           fi
 
-          git commit \
-            -m "Sync from GitHub ${GITHUB_SHA::7}"
-
-
-      # ============================================================
-      # 9. Push 到 Gitee master
-      # ============================================================
-      - name: Push to Gitee
-        working-directory: gitee-core
-        run: |
-          set -e
-
+          git commit -m "Update release"
           git push origin master
-
-          echo ""
-          echo "========================================"
-          echo "Gitee CN 同步成功"
-          echo "========================================"
-          echo ""
-          echo "国内安装/更新地址："
-          echo "https://gitee.com/underdestiny/core/raw/master/core.user.js"
