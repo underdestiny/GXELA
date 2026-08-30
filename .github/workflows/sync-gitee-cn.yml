@@ -11,41 +11,31 @@ permissions:
   contents: read
 
 jobs:
-  sync:
+  sync-gitee:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 获取 GitHub 当前 main 最新代码
       - name: Checkout GitHub
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      # 2. 修改国内版油猴脚本的更新地址
       - name: Generate CN userscript
-        shell: bash
         run: |
-          set -e
-
-          FILE="GXELA-auto-learn.user.js"
-
-          if [ ! -f "$FILE" ]; then
-            echo "错误：找不到 $FILE"
-            exit 1
-          fi
-
-          CN_URL="https://gitee.com/underdestiny/GXELA/raw/cn/GXELA-auto-learn.user.js"
-
-          python3 - <<'PY'
+          python3 <<'PY'
           from pathlib import Path
           import re
 
           file = Path("GXELA-auto-learn.user.js")
+
+          if not file.exists():
+              raise SystemExit("找不到 GXELA-auto-learn.user.js")
+
           text = file.read_text(encoding="utf-8")
 
-          cn_url = "https://gitee.com/underdestiny/GXELA/raw/cn/GXELA-auto-learn.user.js"
+          cn_url = (
+              "https://gitee.com/underdestiny/GXELA/"
+              "raw/cn/GXELA-auto-learn.user.js"
+          )
 
-          # 替换 @updateURL
           text, n1 = re.subn(
               r'^(\s*//\s*@updateURL\s+).*$',
               rf'\g<1>{cn_url}',
@@ -54,7 +44,6 @@ jobs:
               flags=re.MULTILINE
           )
 
-          # 替换 @downloadURL
           text, n2 = re.subn(
               r'^(\s*//\s*@downloadURL\s+).*$',
               rf'\g<1>{cn_url}',
@@ -64,54 +53,77 @@ jobs:
           )
 
           if n1 != 1:
-              raise SystemExit("错误：没有找到唯一的 @updateURL")
+              raise SystemExit(
+                  "没有找到 @updateURL，请检查脚本头部"
+              )
 
           if n2 != 1:
-              raise SystemExit("错误：没有找到唯一的 @downloadURL")
+              raise SystemExit(
+                  "没有找到 @downloadURL，请检查脚本头部"
+              )
 
           file.write_text(text, encoding="utf-8")
 
-          print("国内版元数据修改完成")
-          print(f"@updateURL   -> {cn_url}")
-          print(f"@downloadURL -> {cn_url}")
+          print("CN 版本生成成功")
+          print(f"@updateURL:   {cn_url}")
+          print(f"@downloadURL: {cn_url}")
           PY
 
-      # 3. Clone Gitee cn 分支
-      - name: Clone Gitee CN branch
+      - name: Get Gitee file information
+        id: gitee_file
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           set -e
 
-          git clone \
-            --branch cn \
-            --single-branch \
-            "https://oauth2:${GITEE_TOKEN}@gitee.com/underdestiny/GXELA.git" \
-            gitee-cn
+          RESPONSE=$(curl -fsSL \
+            -H "Authorization: token ${GITEE_TOKEN}" \
+            "https://gitee.com/api/v5/repos/underdestiny/GXELA/contents/GXELA-auto-learn.user.js?ref=cn")
 
-      # 4. 将 GitHub 最新脚本复制到 Gitee cn 分支
-      - name: Update Gitee CN script
+          echo "$RESPONSE" > gitee-file.json
+
+          SHA=$(python3 - <<'PY'
+          import json
+
+          with open("gitee-file.json", encoding="utf-8") as f:
+              data = json.load(f)
+
+          if isinstance(data, list):
+              raise SystemExit(
+                  "Gitee 返回的是目录列表，而不是文件对象"
+              )
+
+          print(data["sha"])
+          PY
+          )
+
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Encode userscript
+        id: encode
+        run: |
+          CONTENT=$(base64 -w 0 GXELA-auto-learn.user.js)
+          echo "content=$CONTENT" >> "$GITHUB_OUTPUT"
+
+      - name: Update Gitee CN branch
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_SHA: ${{ steps.gitee_file.outputs.sha }}
+          CONTENT: ${{ steps.encode.outputs.content }}
         run: |
           set -e
 
-          cp GXELA-auto-learn.user.js \
-             gitee-cn/GXELA-auto-learn.user.js
-
-      # 5. 提交并推送到 Gitee cn
-      - name: Push to Gitee CN
-        working-directory: gitee-cn
-        run: |
-          set -e
-
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-
-          git add GXELA-auto-learn.user.js
-
-          if git diff --cached --quiet; then
-            echo "没有文件变化，无需提交"
-            exit 0
-          fi
-
-          git commit -m "Sync from GitHub ${{ github.sha }}"
-          git push origin cn
+          curl -fsSL \
+            -X PUT \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token ${GITEE_TOKEN}" \
+            "https://gitee.com/api/v5/repos/underdestiny/GXELA/contents/GXELA-auto-learn.user.js" \
+            --data @- <<EOF
+          {
+            "access_token": "${GITEE_TOKEN}",
+            "message": "Sync CN version from GitHub ${GITHUB_SHA}",
+            "content": "${CONTENT}",
+            "sha": "${GITEE_SHA}",
+            "branch": "cn"
+          }
+          EOF
