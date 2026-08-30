@@ -16,94 +16,74 @@ jobs:
 
     steps:
 
-      # 获取源码
       - name: Checkout
         uses: actions/checkout@v4
 
 
+      # ============================================================
       # 生成发行文件
+      # ============================================================
       - name: Prepare
         env:
-          REPO: ${{ secrets.GIT_REPO }}
+          GIT_REPO: ${{ secrets.GIT_REPO }}
         run: |
           set -e
 
+          if [ ! -f "GXELA-auto-learn.user.js" ]; then
+            echo "source file not found"
+            exit 1
+          fi
+
           python3 <<'PY'
           from pathlib import Path
-          from urllib.parse import urlparse
-          import re
           import os
+          import re
+          from urllib.parse import urlparse
 
-          SOURCE = Path("GXELA-auto-learn.user.js")
-          OUTPUT = Path("core.user.js")
+          SRC = Path("GXELA-auto-learn.user.js")
+          DST = Path("core.user.js")
 
-          REPO = os.environ["REPO"].strip().rstrip("/")
+          repo = os.environ["GIT_REPO"].strip().rstrip("/")
 
-          if not REPO:
-              raise SystemExit("repository is empty")
+          parsed = urlparse(repo)
 
-          # ==========================================================
-          # 从仓库地址解析：
+          if not parsed.scheme or not parsed.netloc:
+              raise SystemExit("invalid repository")
+
+          # 从仓库地址中提取：
           #
           # https://example.com/user/project.git
           #
-          # 得到：
-          # scheme = https
-          # host   = example.com
-          # path   = /user/project.git
-          # ==========================================================
-          parsed = urlparse(REPO)
-
-          if not parsed.scheme or not parsed.netloc:
-              raise SystemExit("invalid repository URL")
+          # ↓
+          #
+          # https://example.com/user/project
+          #
+          base = f"{parsed.scheme}://{parsed.netloc}"
 
           path = parsed.path.strip("/")
 
           if path.endswith(".git"):
               path = path[:-4]
 
+          # 分割仓库路径
           parts = path.split("/")
 
           if len(parts) < 2:
               raise SystemExit("invalid repository path")
 
           owner = parts[-2]
-          repo = parts[-1]
+          repo_name = parts[-1]
 
-          # ==========================================================
-          # 默认发行分支和文件名
-          # ==========================================================
-          branch = "master"
-          filename = "core.user.js"
-
-          # ==========================================================
-          # 自动构造 Raw 地址
-          #
-          # 不写死任何平台域名
-          # ==========================================================
+          # 构造 Raw 地址
           raw_url = (
-              f"{parsed.scheme}://{parsed.netloc}/"
-              f"{owner}/{repo}/raw/"
-              f"{branch}/{filename}"
+              f"{base}/{owner}/{repo_name}"
+              f"/raw/master/core.user.js"
           )
 
-          print("source:", SOURCE)
-          print("output:", OUTPUT)
+          text = SRC.read_text(encoding="utf-8")
 
-          # ==========================================================
-          # 读取源码
-          # ==========================================================
-          if not SOURCE.exists():
-              raise SystemExit("source file not found")
-
-          text = SOURCE.read_text(
-              encoding="utf-8"
-          )
-
-          # ==========================================================
-          # 替换 @updateURL
-          # ==========================================================
-          text, count_update = re.subn(
+          # 更新地址
+          text, n1 = re.subn(
               r'^(\s*//\s*@updateURL\s+).*$',
               rf'\g<1>{raw_url}',
               text,
@@ -111,10 +91,8 @@ jobs:
               flags=re.MULTILINE
           )
 
-          # ==========================================================
-          # 替换 @downloadURL
-          # ==========================================================
-          text, count_download = re.subn(
+          # 下载地址
+          text, n2 = re.subn(
               r'^(\s*//\s*@downloadURL\s+).*$',
               rf'\g<1>{raw_url}',
               text,
@@ -122,20 +100,13 @@ jobs:
               flags=re.MULTILINE
           )
 
-          if count_update != 1:
-              raise SystemExit(
-                  "@updateURL not found"
-              )
+          if n1 != 1:
+              raise SystemExit("updateURL not found")
 
-          if count_download != 1:
-              raise SystemExit(
-                  "@downloadURL not found"
-              )
+          if n2 != 1:
+              raise SystemExit("downloadURL not found")
 
-          # ==========================================================
-          # 写入发行文件
-          # ==========================================================
-          OUTPUT.write_text(
+          DST.write_text(
               text,
               encoding="utf-8"
           )
@@ -144,7 +115,6 @@ jobs:
           PY
 
 
-      # 检查生成文件
       - name: Verify
         run: |
           set -e
@@ -157,15 +127,19 @@ jobs:
           echo "verification completed"
 
 
+      # ============================================================
       # 获取目标仓库
+      # ============================================================
       - name: Fetch
         env:
-          TOKEN: ${{ secrets.GIT_TOKEN }}
-          REPO: ${{ secrets.GIT_REPO }}
+          GIT_REPO: ${{ secrets.GIT_REPO }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
         run: |
           set -e
 
-          AUTH_REPO="${REPO/https:\/\//https:\/\/oauth2:${TOKEN}@}"
+          AUTH_REPO="$GIT_REPO"
+
+          AUTH_REPO="${AUTH_REPO/https:\/\//https:\/\/oauth2:${GIT_TOKEN}@}"
 
           git clone \
             --branch master \
@@ -174,7 +148,9 @@ jobs:
             target
 
 
+      # ============================================================
       # 更新文件
+      # ============================================================
       - name: Deploy
         run: |
           set -e
@@ -184,7 +160,9 @@ jobs:
             target/core.user.js
 
 
+      # ============================================================
       # 提交
+      # ============================================================
       - name: Commit
         working-directory: target
         run: |
@@ -203,11 +181,14 @@ jobs:
           git commit -m "update"
 
 
+      # ============================================================
       # 推送
+      # ============================================================
       - name: Push
         working-directory: target
         env:
-          TOKEN: ${{ secrets.GIT_TOKEN }}
+          GIT_REPO: ${{ secrets.GIT_REPO }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
         run: |
           set -e
 
