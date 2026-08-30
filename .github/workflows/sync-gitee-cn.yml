@@ -1,4 +1,4 @@
-name: Sync Gitee CN
+name: Build
 
 on:
   push:
@@ -11,116 +11,204 @@ permissions:
   contents: read
 
 jobs:
-  sync:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # 获取 GitHub 源码
+
+      # 获取源码
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 生成国内版
-      - name: Generate CN version
+
+      # 生成发行文件
+      - name: Prepare
         env:
-          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+          REPO: ${{ secrets.GIT_REPO }}
         run: |
           set -e
 
           python3 <<'PY'
           from pathlib import Path
+          from urllib.parse import urlparse
           import re
           import os
-          from urllib.parse import urlparse
 
-          source = Path("GXELA-auto-learn.user.js")
-          target = Path("core.user.js")
+          SOURCE = Path("GXELA-auto-learn.user.js")
+          OUTPUT = Path("core.user.js")
 
-          repo = os.environ["GITEE_REPO"].rstrip("/")
+          REPO = os.environ["REPO"].strip().rstrip("/")
 
-          # 从仓库地址自动生成 Raw 地址
-          parsed = urlparse(repo)
+          if not REPO:
+              raise SystemExit("repository is empty")
 
-          if parsed.netloc != "gitee.com":
-              raise SystemExit("错误：GITEE_REPO 必须是 Gitee 仓库地址")
+          # ==========================================================
+          # 从仓库地址解析：
+          #
+          # https://example.com/user/project.git
+          #
+          # 得到：
+          # scheme = https
+          # host   = example.com
+          # path   = /user/project.git
+          # ==========================================================
+          parsed = urlparse(REPO)
+
+          if not parsed.scheme or not parsed.netloc:
+              raise SystemExit("invalid repository URL")
 
           path = parsed.path.strip("/")
 
           if path.endswith(".git"):
               path = path[:-4]
 
-          cn_url = f"https://gitee.com/{path}/raw/master/core.user.js"
+          parts = path.split("/")
 
-          text = source.read_text(encoding="utf-8")
+          if len(parts) < 2:
+              raise SystemExit("invalid repository path")
 
+          owner = parts[-2]
+          repo = parts[-1]
+
+          # ==========================================================
+          # 默认发行分支和文件名
+          # ==========================================================
+          branch = "master"
+          filename = "core.user.js"
+
+          # ==========================================================
+          # 自动构造 Raw 地址
+          #
+          # 不写死任何平台域名
+          # ==========================================================
+          raw_url = (
+              f"{parsed.scheme}://{parsed.netloc}/"
+              f"{owner}/{repo}/raw/"
+              f"{branch}/{filename}"
+          )
+
+          print("source:", SOURCE)
+          print("output:", OUTPUT)
+
+          # ==========================================================
+          # 读取源码
+          # ==========================================================
+          if not SOURCE.exists():
+              raise SystemExit("source file not found")
+
+          text = SOURCE.read_text(
+              encoding="utf-8"
+          )
+
+          # ==========================================================
           # 替换 @updateURL
-          text, n1 = re.subn(
+          # ==========================================================
+          text, count_update = re.subn(
               r'^(\s*//\s*@updateURL\s+).*$',
-              rf'\g<1>{cn_url}',
+              rf'\g<1>{raw_url}',
               text,
               count=1,
               flags=re.MULTILINE
           )
 
+          # ==========================================================
           # 替换 @downloadURL
-          text, n2 = re.subn(
+          # ==========================================================
+          text, count_download = re.subn(
               r'^(\s*//\s*@downloadURL\s+).*$',
-              rf'\g<1>{cn_url}',
+              rf'\g<1>{raw_url}',
               text,
               count=1,
               flags=re.MULTILINE
           )
 
-          if n1 != 1:
-              raise SystemExit("错误：没有找到 @updateURL")
+          if count_update != 1:
+              raise SystemExit(
+                  "@updateURL not found"
+              )
 
-          if n2 != 1:
-              raise SystemExit("错误：没有找到 @downloadURL")
+          if count_download != 1:
+              raise SystemExit(
+                  "@downloadURL not found"
+              )
 
-          target.write_text(text, encoding="utf-8")
+          # ==========================================================
+          # 写入发行文件
+          # ==========================================================
+          OUTPUT.write_text(
+              text,
+              encoding="utf-8"
+          )
 
-          print("CN 版本生成成功")
+          print("prepare completed")
           PY
 
-      # Clone Gitee
-      - name: Clone Gitee
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+
+      # 检查生成文件
+      - name: Verify
         run: |
           set -e
 
-          # 把 Token 临时注入 Clone 地址
-          AUTH_URL="${GITEE_REPO/https:\/\//https:\/\/oauth2:${GITEE_TOKEN}@}"
+          test -f core.user.js
+
+          grep -q "@updateURL" core.user.js
+          grep -q "@downloadURL" core.user.js
+
+          echo "verification completed"
+
+
+      # 获取目标仓库
+      - name: Fetch
+        env:
+          TOKEN: ${{ secrets.GIT_TOKEN }}
+          REPO: ${{ secrets.GIT_REPO }}
+        run: |
+          set -e
+
+          AUTH_REPO="${REPO/https:\/\//https:\/\/oauth2:${TOKEN}@}"
 
           git clone \
             --branch master \
             --single-branch \
-            "$AUTH_URL" \
-            gitee-release
+            "$AUTH_REPO" \
+            target
+
 
       # 更新文件
-      - name: Update Gitee
+      - name: Deploy
         run: |
           set -e
 
-          cp core.user.js \
-             gitee-release/core.user.js
+          cp \
+            core.user.js \
+            target/core.user.js
 
-      # 提交并推送
-      - name: Push Gitee
-        working-directory: gitee-release
+
+      # 提交
+      - name: Commit
+        working-directory: target
         run: |
           set -e
 
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config user.name "builder"
+          git config user.email "builder@users.noreply.github.com"
 
           git add core.user.js
 
           if git diff --cached --quiet; then
-            echo "没有变化，无需同步"
+            echo "no changes"
             exit 0
           fi
 
-          git commit -m "Update release"
+          git commit -m "update"
+
+
+      # 推送
+      - name: Push
+        working-directory: target
+        env:
+          TOKEN: ${{ secrets.GIT_TOKEN }}
+        run: |
+          set -e
+
           git push origin master
